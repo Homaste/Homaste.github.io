@@ -64,12 +64,10 @@
   <div id="status">Готов к работе</div>
 
   <script>
-    // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
     const circle = document.getElementById('circle');
     const status = document.getElementById('status');
     const synth = window.speechSynthesis;
-    
-    // Проверка поддержки речи
+
     if (!('webkitSpeechRecognition' in window)) {
       status.textContent = '❌ Голос не поддерживается';
       circle.style.background = '#ff4c4c';
@@ -80,27 +78,84 @@
       recognition.interimResults = false;
       recognition.lang = 'ru-RU';
 
-      // === ФУНКЦИЯ ОТПРАВКИ ЗАПРОСА В ИИ ===
+      // === УМНЫЕ КОМАНДЫ ===
+      function handleLocalCommand(text) {
+        text = text.toLowerCase().trim();
+
+        // Навигатор
+        if (/(маршрут|навигатор|построй маршрут|как доехать|где находится|до |на |в )/.test(text)) {
+          let address = text
+            .replace(/.*(до |на |в |к |где |маршрут до )/g, '')
+            .replace(/(навигатор|маршрут|построй|как доехать|где находится)/g, '')
+            .trim();
+
+          if (address && address.length > 1) {
+            const url = `https://yandex.ru/maps/?text=${encodeURIComponent(address)}&rtt=auto`;
+            window.open(url, '_blank');
+            return `Открываю маршрут до: ${address}`;
+          }
+        }
+
+        // Музыка
+        if (/(музык|включи|песн|трек|мелоди|аудио|слушать)/.test(text)) {
+          window.open('https://music.yandex.ru/home', '_blank');
+          return 'Включаю музыку!';
+        }
+
+        // YouTube
+        if (/(ютуб|youtube|видео|покажи видео)/.test(text)) {
+          const query = text.replace(/.*(ютуб|youtube|видео|покажи видео)/, '').trim();
+          if (query) {
+            window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
+            return `Ищу видео: ${query}`;
+          } else {
+            window.open('https://www.youtube.com/', '_blank');
+            return 'Открываю YouTube';
+          }
+        }
+
+        // Погода
+        if (/(погод|температура|градус|холодно|жарко)/.test(text)) {
+          window.open('https://yandex.ru/pogoda/', '_blank');
+          return 'Показываю погоду';
+        }
+
+        // Приветствие / помощь
+        if (/(привет|здравствуй|эй|йо|помоги|что ты умеешь)/.test(text)) {
+          return 'Привет! Я могу: открыть навигатор, включить музыку, найти видео, показать погоду или просто поболтать!';
+        }
+
+        return null; // не команда — идём в ИИ
+      }
+
+      // === ЗАПРОС В ИИ (только если не локальная команда) ===
       async function queryAI(userText) {
         status.textContent = 'Ищу информацию...';
         circle.style.animation = 'listening 2s 1';
 
+        // Сначала пробуем локальные команды
+        const localResponse = handleLocalCommand(userText);
+        if (localResponse) {
+          return localResponse;
+        }
+
+        // Если не команда — идём в ИИ (с резервным поведением)
         try {
-          // 🔥 ЗАМЕНИ ЭТОТ URL НА РАБОЧИЙ ПРОКСИ (см. ниже)
-          const proxyUrl = 'https://free-ai-proxy.braiynsk.workers.dev/?q=' + encodeURIComponent(userText);
+          // 🔁 Временный рабочий прокси (на замену старому)
+          const proxyUrl = 'https://ai-proxy-openai.braiyn.workers.dev/?q=' + encodeURIComponent(userText);
+          const response = await fetch(proxyUrl, { method: 'GET' });
           
-          const response = await fetch(proxyUrl);
-          if (!response.ok) throw new Error('Сервер не ответил');
-          
+          if (!response.ok) throw new Error('Прокси недоступен');
           const answer = await response.text();
-          return answer.trim() || 'Извини, я не нашёл ответа.';
+          return answer.trim() || 'Извини, не знаю.';
         } catch (err) {
-          console.error(err);
-          return 'Не удалось подключиться к интернету. Проверьте соединение.';
+          console.warn('ИИ недоступен:', err);
+          // Резервный ответ на случай ошибки
+          return 'Извини, сейчас не могу подключиться к ИИ. Но могу открыть музыку, карты или YouTube — просто скажи!';
         }
       }
 
-      // === ОЗВУЧКА ОТВЕТА ===
+      // === ОЗВУЧКА ===
       function speak(text) {
         if (synth.speaking) synth.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
@@ -120,14 +175,14 @@
         synth.speak(utterance);
       }
 
-      // === ОБРАБОТКА ГОЛОСА ===
+      // === ГОЛОС ===
       recognition.onresult = async (event) => {
         const text = event.results[0][0].transcript;
         status.textContent = `Вы сказали: "${text}"`;
-        console.log('Пользователь:', text);
+        console.log('🗣️ Пользователь:', text);
         
         const answer = await queryAI(text);
-        console.log('ИИ:', answer);
+        console.log('🤖 Ответ:', answer);
         speak(answer);
       };
 
@@ -136,7 +191,6 @@
         circle.style.animation = 'idle 4s infinite ease-in-out';
       };
 
-      // === ЗАПУСК ПО КЛИКУ ===
       circle.onclick = () => {
         if (synth.speaking) {
           synth.cancel();
