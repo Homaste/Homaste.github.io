@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice AI</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background: #0a0a0a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+      color: white;
+    }
+    #circle {
+      width: 140px;
+      height: 140px;
+      background: #10a37f;
+      border-radius: 50%;
+      box-shadow: 0 0 60px rgba(16, 163, 127, 0.6);
+      animation: idle 4s infinite ease-in-out;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    #circle:active {
+      transform: scale(0.95);
+    }
+    @keyframes idle {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 1; }
+    }
+    @keyframes listening {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 80px #ff6b6b; background: #ff6b6b; }
+      50% { transform: scale(1.2); box-shadow: 0 0 120px #ff6b6b; }
+    }
+    @keyframes speaking {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 80px #4ecdc4; background: #4ecdc4; }
+      50% { transform: scale(1.05); box-shadow: 0 0 100px #4ecdc4; }
+    }
+    #status {
+      position: absolute;
+      bottom: 30px;
+      text-align: center;
+      width: 100%;
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    .hint {
+      position: absolute;
+      top: 30px;
+      font-size: 14px;
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">Нажмите на круг и говорите</div>
+  <div id="circle"></div>
+  <div id="status">Готов к работе</div>
+
+  <script>
+    // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
+    const circle = document.getElementById('circle');
+    const status = document.getElementById('status');
+    const synth = window.speechSynthesis;
+    
+    // Проверка поддержки речи
+    if (!('webkitSpeechRecognition' in window)) {
+      status.textContent = '❌ Голос не поддерживается';
+      circle.style.background = '#ff4c4c';
+      circle.style.animation = 'none';
+    } else {
+      const recognition = new webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'ru-RU';
+
+      // === ФУНКЦИЯ ОТПРАВКИ ЗАПРОСА В ИИ ===
+      async function queryAI(userText) {
+        status.textContent = 'Ищу информацию...';
+        circle.style.animation = 'listening 2s 1';
+
+        try {
+          // 🔥 ЗАМЕНИ ЭТОТ URL НА РАБОЧИЙ ПРОКСИ (см. ниже)
+          const proxyUrl = 'https://free-ai-proxy.braiynsk.workers.dev/?q=' + encodeURIComponent(userText);
+          
+          const response = await fetch(proxyUrl);
+          if (!response.ok) throw new Error('Сервер не ответил');
+          
+          const answer = await response.text();
+          return answer.trim() || 'Извини, я не нашёл ответа.';
+        } catch (err) {
+          console.error(err);
+          return 'Не удалось подключиться к интернету. Проверьте соединение.';
+        }
+      }
+
+      // === ОЗВУЧКА ОТВЕТА ===
+      function speak(text) {
+        if (synth.speaking) synth.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ru-RU';
+        utterance.rate = 0.92;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        
+        utterance.onstart = () => {
+          circle.style.animation = 'speaking 2s 1';
+          status.textContent = 'Говорю...';
+        };
+        utterance.onend = () => {
+          circle.style.animation = 'idle 4s infinite ease-in-out';
+          status.textContent = 'Готов к новому запросу';
+        };
+        synth.speak(utterance);
+      }
+
+      // === ОБРАБОТКА ГОЛОСА ===
+      recognition.onresult = async (event) => {
+        const text = event.results[0][0].transcript;
+        status.textContent = `Вы сказали: "${text}"`;
+        console.log('Пользователь:', text);
+        
+        const answer = await queryAI(text);
+        console.log('ИИ:', answer);
+        speak(answer);
+      };
+
+      recognition.onerror = (e) => {
+        status.textContent = 'Ошибка: ' + e.error;
+        circle.style.animation = 'idle 4s infinite ease-in-out';
+      };
+
+      // === ЗАПУСК ПО КЛИКУ ===
+      circle.onclick = () => {
+        if (synth.speaking) {
+          synth.cancel();
+          status.textContent = 'Отменено';
+          circle.style.animation = 'idle 4s infinite ease-in-out';
+          return;
+        }
+        status.textContent = 'Слушаю... Говорите.';
+        recognition.start();
+      };
+    }
+  </script>
+</body>
+</html>
